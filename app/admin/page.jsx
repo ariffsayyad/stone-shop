@@ -1,12 +1,14 @@
 'use client'
-import { dummyAdminDashboardData } from "@/assets/assets"
+import { useSession } from "next-auth/react"
+import { useRouter } from "next/navigation"
+import { useEffect, useState } from "react"
 import Loading from "@/components/Loading"
 import OrdersAreaChart from "@/components/OrdersAreaChart"
 import { CircleDollarSignIcon, ShoppingBasketIcon, StoreIcon, TagsIcon } from "lucide-react"
-import { useEffect, useState } from "react"
 
 export default function AdminDashboard() {
-
+    const { data: session, status } = useSession()
+    const router = useRouter()
     const currency = process.env.NEXT_PUBLIC_CURRENCY_SYMBOL || '$'
 
     const [loading, setLoading] = useState(true)
@@ -26,15 +28,42 @@ export default function AdminDashboard() {
     ]
 
     const fetchDashboardData = async () => {
-        setDashboardData(dummyAdminDashboardData)
-        setLoading(false)
+        try {
+            // Fetch products count
+            const productsResponse = await fetch('/api/products')
+            if (productsResponse.ok) {
+                const products = await productsResponse.json()
+                setDashboardData(prev => ({ ...prev, products: products.length }))
+            }
+
+            // Fetch orders count and revenue (placeholder - implement when orders API is ready)
+            // For now, using dummy data
+            setDashboardData(prev => ({
+                ...prev,
+                orders: 0,
+                revenue: 0,
+                stores: 0,
+                allOrders: []
+            }))
+        } catch (error) {
+            console.error('Error fetching dashboard data:', error)
+        } finally {
+            setLoading(false)
+        }
     }
 
     useEffect(() => {
-        fetchDashboardData()
-    }, [])
+        if (status === 'loading') return
 
-    if (loading) return <Loading />
+        if (!session || session.user.role !== 'admin') {
+            router.push('/admin/login')
+            return
+        }
+
+        fetchDashboardData()
+    }, [session, status, router])
+
+    if (loading || status === 'loading') return <Loading />
 
     return (
         <div className="text-slate-500">
