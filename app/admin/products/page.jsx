@@ -24,11 +24,30 @@ export default function AdminProducts() {
         stock: ""
     })
 
-    useEffect(() => {
-        // Load products from Redux store
-        const storedProducts = JSON.parse(localStorage.getItem('adminProducts') || '[]')
-        setProducts(storedProducts)
+    const fetchProducts = async () => {
+        try {
+            const response = await fetch('/api/products')
+            if (response.ok) {
+                const data = await response.json()
+                setProducts(data)
+                // Update Redux store
+                data.forEach(product => dispatch(addProduct(product)))
+            } else {
+                // Fallback to localStorage if API fails
+                const storedProducts = JSON.parse(localStorage.getItem('adminProducts') || '[]')
+                setProducts(storedProducts)
+            }
+        } catch (error) {
+            console.error('Error fetching products:', error)
+            // Fallback to localStorage
+            const storedProducts = JSON.parse(localStorage.getItem('adminProducts') || '[]')
+            setProducts(storedProducts)
+        }
         setLoading(false)
+    }
+
+    useEffect(() => {
+        fetchProducts()
     }, [])
 
     const handleInputChange = (e) => {
@@ -42,71 +61,79 @@ export default function AdminProducts() {
         }
     }
 
-    const handleSubmit = (e) => {
+    const handleSubmit = async (e) => {
         e.preventDefault()
 
-        if (editingProduct) {
-            // Update existing product
-            const updatedProduct = {
-                ...productData,
-                id: editingProduct.id,
+        try {
+            const productPayload = {
+                name: productData.name,
+                description: productData.description,
                 price: parseFloat(productData.price),
-                stock: parseInt(productData.stock),
-                createdAt: editingProduct.createdAt || new Date().toISOString(),
-                updatedAt: new Date().toISOString(),
-                images: productData.image ? [productData.image] : editingProduct.images,
-                inStock: parseInt(productData.stock) > 0,
-                store: editingProduct.store || {
-                    id: "store_1",
-                    name: "Happy Shop",
-                    logo: assets.happy_store
-                },
-                rating: editingProduct.rating || []
-            }
-            const updatedProducts = products.map(p =>
-                p.id === editingProduct.id ? updatedProduct : p
-            )
-            setProducts(updatedProducts)
-            localStorage.setItem('adminProducts', JSON.stringify(updatedProducts))
-            dispatch(updateProduct(updatedProduct))
-            toast.success("Product updated successfully!")
-        } else {
-            // Add new product
-            const newProduct = {
-                ...productData,
-                id: Date.now(),
-                price: parseFloat(productData.price),
-                stock: parseInt(productData.stock),
-                createdAt: new Date().toISOString(),
-                updatedAt: new Date().toISOString(),
-                image: productData.image || assets.product_img1,
                 images: productData.image ? [productData.image] : [assets.product_img1],
-                inStock: parseInt(productData.stock) > 0,
-                store: {
-                    id: "store_1",
-                    name: "Happy Shop",
-                    logo: assets.happy_store
-                },
-                rating: []
+                category: productData.category,
+                storeId: "store_1" // Default store ID for admin products
             }
-            const updatedProducts = [newProduct, ...products]
-            setProducts(updatedProducts)
-            localStorage.setItem('adminProducts', JSON.stringify(updatedProducts))
-            dispatch(addProduct(newProduct))
-            toast.success("Product added successfully!")
-        }
 
-        // Reset form
-        setProductData({
-            name: "",
-            description: "",
-            price: "",
-            image: "",
-            category: "",
-            stock: ""
-        })
-        setShowAddForm(false)
-        setEditingProduct(null)
+            if (editingProduct) {
+                // Update existing product via API
+                const response = await fetch(`/api/products/${editingProduct.id}`, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        ...productPayload,
+                        inStock: parseInt(productData.stock) > 0
+                    }),
+                })
+
+                if (response.ok) {
+                    const updatedProduct = await response.json()
+                    const updatedProducts = products.map(p =>
+                        p.id === editingProduct.id ? updatedProduct : p
+                    )
+                    setProducts(updatedProducts)
+                    dispatch(updateProduct(updatedProduct))
+                    toast.success("Product updated successfully!")
+                } else {
+                    throw new Error('Failed to update product')
+                }
+            } else {
+                // Add new product via API
+                const response = await fetch('/api/products', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(productPayload),
+                })
+
+                if (response.ok) {
+                    const newProduct = await response.json()
+                    const updatedProducts = [newProduct, ...products]
+                    setProducts(updatedProducts)
+                    dispatch(addProduct(newProduct))
+                    toast.success("Product added successfully!")
+                } else {
+                    throw new Error('Failed to add product')
+                }
+            }
+
+            // Reset form
+            setProductData({
+                name: "",
+                description: "",
+                price: "",
+                image: "",
+                category: "",
+                stock: ""
+            })
+            setShowAddForm(false)
+            setEditingProduct(null)
+        } catch (error) {
+            console.error('Error saving product:', error)
+            toast.error("Failed to save product. Please try again.")
+        }
     }
 
     const handleEdit = (product) => {
@@ -122,12 +149,24 @@ export default function AdminProducts() {
         setShowAddForm(true)
     }
 
-    const handleDelete = (productId) => {
-        const updatedProducts = products.filter(p => p.id !== productId)
-        setProducts(updatedProducts)
-        localStorage.setItem('adminProducts', JSON.stringify(updatedProducts))
-        dispatch(deleteProduct(productId))
-        toast.success("Product deleted successfully!")
+    const handleDelete = async (productId) => {
+        try {
+            const response = await fetch(`/api/products/${productId}`, {
+                method: 'DELETE',
+            })
+
+            if (response.ok) {
+                const updatedProducts = products.filter(p => p.id !== productId)
+                setProducts(updatedProducts)
+                dispatch(deleteProduct(productId))
+                toast.success("Product deleted successfully!")
+            } else {
+                throw new Error('Failed to delete product')
+            }
+        } catch (error) {
+            console.error('Error deleting product:', error)
+            toast.error("Failed to delete product. Please try again.")
+        }
     }
 
     if (loading) return <Loading />
@@ -255,7 +294,7 @@ export default function AdminProducts() {
                 {products.map((product) => (
                     <div key={product.id} className="bg-white border border-slate-200 rounded-lg p-4">
                         <Image
-                            src={product.image}
+                            src={product.images?.[0] || product.image || assets.product_img1}
                             alt={product.name}
                             width={200}
                             height={200}
@@ -265,7 +304,7 @@ export default function AdminProducts() {
                         <p className="text-slate-600 text-sm mb-2">{product.description}</p>
                         <div className="flex justify-between items-center mb-2">
                             <span className="text-slate-800 font-bold">${product.price}</span>
-                            <span className="text-sm text-slate-500">Stock: {product.stock}</span>
+                            <span className="text-sm text-slate-500">Stock: {product.inStock ? 'In Stock' : 'Out of Stock'}</span>
                         </div>
                         <span className="inline-block bg-slate-100 text-slate-700 px-2 py-1 rounded text-xs mb-4">
                             {product.category}

@@ -26,9 +26,11 @@ export async function POST(request) {
     // Create admin user
     const admin = await prisma.user.create({
       data: {
+        id: 'admin-user-id',
         email,
         password: hashedPassword,
         name,
+        image: '',
         role: "admin"
       }
     })
